@@ -1,0 +1,103 @@
+library(readxl)
+library(dplyr)
+library(ggplot2)
+
+file_path <- file.choose()
+df <- read_excel(file_path)
+
+ctrl <- df %>%
+  select(`hair cell ctrl`, `crescent angle ctrl`, `area ctrl`) %>%
+  rename(
+    cell = `hair cell ctrl`,
+    angle = `crescent angle ctrl`,
+    area = `area ctrl`
+  ) %>%
+  filter(!is.na(cell)) %>%
+  mutate(genotype = "Control")
+
+mut <- df %>%
+  select(`hair cell mut`, `crescent angle mut`, `area mut`) %>%
+  rename(
+    cell = `hair cell mut`,
+    angle = `crescent angle mut`,
+    area = `area mut`
+  ) %>%
+  filter(!is.na(cell)) %>%
+  mutate(genotype = "Mutant")
+
+data <- bind_rows(ctrl, mut)
+
+data <- data %>%
+  mutate(
+    radius_scaled = area,
+    angle_rad = angle * pi / 180,
+    x = radius_scaled * cos(angle_rad),
+    y = radius_scaled * sin(angle_rad)
+  )
+
+radii <- seq(0, 12, by = 2)
+
+circle_grid <- lapply(radii, function(r){
+  data.frame(
+    x = r * cos(seq(0, 2*pi, length.out = 360)),
+    y = r * sin(seq(0, 2*pi, length.out = 360)),
+    r = r
+  )
+}) %>% bind_rows()
+
+angles <- seq(0, 330, by = 30)
+
+spokes <- data.frame(
+  x = 0,
+  y = 0,
+  xend = 12 * cos(angles * pi / 180),
+  yend = 12 * sin(angles * pi / 180)
+)
+
+angle_labels <- data.frame(
+  x = 1.2 * 12 * cos(angles * pi / 180),
+  y = 1.2 * 12 * sin(angles * pi / 180),
+  label = paste0(angles, "°")
+)
+
+radius_labels <- data.frame(
+  x = radii[-1],
+  y = 0.04 * 12,
+  label = radii[-1]
+)
+
+colors <- c(
+  Control = "#2C7FB8",
+  Mutant = "#D7301F"
+)
+
+plot <- ggplot() +
+  geom_path(data = circle_grid, aes(x, y, group = r), color = "grey80", linewidth = 0.4) +
+  geom_segment(data = spokes, aes(x = x, y = y, xend = xend, yend = yend), color = "grey85", linewidth = 0.3) +
+  geom_point(data = data, aes(x = x, y = y, fill = genotype),
+             shape = 21, size = 3, color = "black", stroke = 0.6, alpha = 0.85) +
+  geom_text(data = angle_labels, aes(x, y, label = label), size = 4) +
+  geom_text(data = radius_labels, aes(x, y, label = label), size = 3) +
+  scale_fill_manual(values = colors) +
+  coord_fixed() +
+  facet_wrap(
+    ~genotype,
+    labeller = as_labeller(c(
+      Control = "Control\nN = 3, n = 58",
+      Mutant = "Fzd3;6 cko\nN = 3, n = 54"
+    ))
+  ) +
+  labs(
+    title = "GPR156 crescent (OHCs, cochlear base)",
+    x = "Angular axis: Crescent angle (°)",
+    y = "Radial axis: Crescent area",
+    fill = "Genotype"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+print(plot)
